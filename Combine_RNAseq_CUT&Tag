@@ -1,0 +1,20 @@
+#  1. combine RNAseq and CUT&Tag --Diff  
+##==========================================================
+RNA =read.csv("RNAseq.csv")
+Ribo=read.csv("Deseq2_all_peak.annotation.csv")
+
+dim(RNA)
+dim(Ribo)
+
+## combine；
+combine= merge(RNA,Ribo,
+               by.x="SYMBOL",
+               by.y="SYMBOL",
+               suffixes = c(".RNA",".Ribo") ,
+               all.x=F,
+               all.y=F)
+
+dim(combine)
+
+# save 
+write.table(combine,"merge.txt",sep="\t",row.names=FALSE)
