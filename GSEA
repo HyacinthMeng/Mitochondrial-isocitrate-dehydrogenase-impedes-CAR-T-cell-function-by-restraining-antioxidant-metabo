@@ -1,0 +1,188 @@
+
+library(org.Hs.eg.db)
+library(clusterProfiler)
+library(enrichplot)
+library(msigdbr)
+
+
+
+KEGG_df = msigdbr(species = "Homo sapiens",category = "C2",
+                  subcategory = "CP:WIKIPATHWAYS") %>% 
+  dplyr::select(gs_name, ,gene_symbol)
+
+KEGG_df = msigdbr(species = "Homo sapiens",category = "C2",
+                  subcategory = "CP") %>% 
+  dplyr::select(gs_name, ,gene_symbol)
+
+
+KEGG_df = msigdbr(species = "Homo sapiens",category = "C7") %>% 
+  dplyr::select(gs_name, ,gene_symbol)
+
+head(KEGG_df)
+
+
+
+KEGG_df = msigdbr(species = "Homo sapiens",category = "C2",
+                  subcategory = "CP:WIKIPATHWAYS") %>% 
+  dplyr::select(gs_name, ,gene_symbol)
+
+
+
+
+df <- read.csv('peak.csv',header=T,sep=",")
+head(df)
+
+
+#df <- df %>%
+#    mutate(rank = rank(logFC,  ties.method = "random")) 
+
+
+
+ge = df$Fold
+names(ge) = df$SYMBOL
+ge = sort(ge,decreasing = T)
+
+head(ge)
+dim(ge)
+
+
+em <- GSEA(ge, TERM2GENE = KEGG_df,pvalueCutoff = 1)
+head(em)
+
+write.table(em,'GSEA__diff_C2_CP.xls',sep = '\t', quote = FALSE, row.names = FALSE)
+
+
+write.table(em,'GSEA__diff_C7.xls',sep = '\t', quote = FALSE, row.names = FALSE)
+
+
+
+
+gseaplot2(em, geneSetID = 1, title = em$Description[73])
+gseaplot2(em, geneSetID = 2, title = em$Description[72])
+
+gseaplot2(em, title = em$Description[15])
+
+paths <- c("GSE20754_WT_VS_TCF1_KO_MEMORY_CD8_TCELL_DN", "GSE36476_CTRL_VS_TSST_ACT_40H_MEMORY_CD4_TCELL_OLD_DN")#选取你需要展示的通路ID
+gseaplot2(em,paths, pvalue_table = TRUE)
+
+?gseaplot2
+
+gseaplot2(KEGG,paths,color = colorspace::rainbow_hcl(4),subplots=c(1,2), pvalue_table = TRUE)
+
+
+gseaplot2(em, "WP_ARYL_HYDROCARBON_RECEPTOR_PATHWAY_WP2873", 
+          color = "firebrick", rel_heights=c(1, .2, .6),pvalue_table = TRUE)
+
+?gseaplot2
+gseaplot2(em, "WP_ARYL_HYDROCARBON_RECEPTOR_PATHWAY_WP2586", 
+          color = "firebrick", rel_heights=c(1, .2, .6),pvalue_table = TRUE)
+
+
+
+
+
+
+########################################################
+# self-define  gmt
+
+gmt <- read.gmt("KEGG_ABC_TRANSPORTERS.v2023.1.Hs.gmt")
+
+class(gmt)
+View(gmt)
+?GSEA
+em <- GSEA(ge, TERM2GENE = gmt,pvalueCutoff = 1)
+head(em)
+
+
+
+gmt <- read.gmt("./sxh sig-T cell memory effector exh.gmt")
+
+class(gmt)
+View(gmt)
+?GSEA
+em <- GSEA(ge, TERM2GENE = gmt,pvalueCutoff = 1,minGSSize=1) 
+
+
+head(em)
+
+write.table(em,'GSEA_cut_rna.xls',sep = '\t', quote = FALSE, row.names = FALSE)
+
+
+
+paths <- c("GSE9650_EFFECTOR_VS_MEMORY_CD8_TCELL_DN")
+gseaplot2(em,paths, pvalue_table = TRUE,ES_geom = "line")
+
+
+
+?gseaplot2
+gseaplot2(em, "GSE9650_EFFECTOR_VS_MEMORY_CD8_TCELL_DN", 
+          color = "firebrick", rel_heights=c(1, .2, .6),pvalue_table = TRUE)
+
+
+
+
+library(clusterProfiler)
+library(org.Hs.eg.db)
+library(enrichplot)
+
+
+install.packages("devtools")
+devtools::install_github("junjunlab/GseaVis")
+library("GseaVis")
+
+dotplotGsea(data = em,topn = 10)
+
+
+# use NES
+dotplotGsea(data = em,topn = 10,
+            order.by = 'NES')
+
+
+# add segment line
+dotplotGsea(data = em,topn = 10,
+            order.by = 'NES',
+            add.seg = T)
+
+
+# all plot
+gseaNb(object = em)
+gseaNb(object = em,
+       geneSetID = 'GSE9650_EXHAUSTED_VS_MEMORY_CD8_TCELL_UP')
+
+
+#只展示上面的曲线：
+
+# retain curve
+?gseaNb
+gseaNb(object = em,
+       geneSetID = 'GSE9650_EFFECTOR_VS_MEMORY_CD8_TCELL_DN',
+       subPlot = 1,
+       addPval = T
+       )
+
+
+# add gene in specific pathway
+mygene <- c(PIM1,IL6R,BCL2,SPRED2,IFNG,SELL,SKI,KLF6,TNFSF8,METTL1,DUSP6,JUN,PIM2,CCND2,KCTD12,IL4R,RETREG1)
+
+
+mygene <- c("PIM1","IL6R","SPRED2","IFNG","SELL")
+
+# plot
+gseaNb(object = em,
+       geneSetID = 'GSE9650_EFFECTOR_VS_MEMORY_CD8_TCELL_DN',
+       subPlot = 2,
+       addGene = mygene)
+
+
+geneSetID = c('GOBP_NUCLEOSIDE_DIPHOSPHATE_METABOLIC_PROCESS',
+              'GOBP_REGULATION_OF_OSSIFICATION',
+              'GOBP_TISSUE_MIGRATION')
+
+# all plot
+?gseaNb
+
+mygene <- c("ENTPD5","SLC11A2","NDUFAF4","CCND2","ITPKB","RREB1","SELL")
+gseaNb(object = em,
+       geneSetID = 'GSE9650_EFFECTOR_VS_MEMORY_CD8_TCELL_DN',
+       addPval = T,
+       addGene = mygene)
