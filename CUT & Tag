@@ -1,0 +1,360 @@
+### 202302 cuttag 
+# Hyacinth Meng
+
+### 0.Pre.
+
+```
+conda install mamba 
+conda install multiqc
+mamba install -c bioconda FastQC Bowtie2 samtools bedtools Picard SEACR deepTools
+
+mkdir 1.fq
+```
+
+### 1.fq deal
+
+```
+# major path （absolute /relative path）
+
+projPath="/home/zju/桌面/202302_SXiaoHui/ANNO"
+projPath="/home/zju/桌面/202302_SXiaoHui/nuohe"
+
+# move
+#find ../2023cuttag_2_Cleandata |grep fq.gz |xargs -I file  mv file #../2023cuttag_2_Cleandata/1.fq
+
+sudo find $projPath |grep Rawdata |grep fq.gz |xargs -I file  mv file $projPath/1.fq
+
+
+```
+
+
+
+### 2.QC(before trim.)
+
+```bash
+mkdir ./2.fastqc |ls ./1.fq/*.fq.gz | while read i
+do
+  xargs fastqc -t 80 -o ./2.fastqc/
+done
+
+# combine all report 
+mkdir ./3.merged_QC | multiqc ./2.fastqc 
+mv *mu* ./3.merged_QC
+```
+
+
+
+### 3.fastp
+
+```
+# output DIR.
+# sample name structure
+# G5_R1.fq.gz
+
+# many samples
+nohup mkdir ./4.cleanfastq |ls ./1.fq |grep R1 |cut -d _ -f 1,1 \
+| while read id; do
+     fastp -i ./1.fq/${id}_R1.fq.gz -I ./1.fq/${id}_R2.fq.gz \
+     -o ./4.cleanfastq/${id}_R1.fq.gz -O ./4.cleanfastq/${id}_R2.fq.gz \
+     -l 36 -q 20 --compression=6 -R ./4.cleanfastq/${id} \
+     -w 16 -h ./4.cleanfastq/${id}.fastp.html -j ./4.cleanfastq/${id}.fastp.json 
+ done &
+
+for id in sxh-6
+do
+fastp -i ./1.fq/${id}_R1.fq.gz -I ./1.fq/${id}_R2.fq.gz \
+     -o ./4.cleanfastq/${id}_R1.fq.gz -O ./4.cleanfastq/${id}_R2.fq.gz \
+     -l 36 -q 20 --compression=6 -R ./4.cleanfastq/${id} \
+     -w 16 \ #线程（软件最大支持数量）
+     -h ./4.cleanfastq/${id}.fastp.html -j ./4.cleanfastq/${id}.fastp.json 
+done
+```
+
+
+
+### 4.QC(after trim)
+
+```bash
+ls ./4.cleanfastq/*.fq.gz | while read i
+do
+  xargs fastqc -t 80 -o ./4.cleanfastq/
+done
+
+
+for id in s
+do
+fastqc -o ./4.cleanfastq/ -t 80 ./4.cleanfastq/${id}_R1.fq.gz \
+./4.cleanfastq/${id}_R2.fq.gz
+done
+
+
+# combine all report 
+mkdir ./5.merged_QC_clean | multiqc ./4.cleanfastq 
+mv *mu* ./5.merged_QC_clean
+```
+
+
+
+### 5.Alignment
+
+#### 5.1 index
+
+```
+## Build the bowtie2 reference genome index if needed:
+## bowtie2-build .a/hg38.fa .
+## nohup bowtie2-build hg38.fa hg38 & > nohup01.out
+#Huuma
+bowtie2-build --threads 40 Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz
+
+#大肠杆菌一个菌株基因组index
+bowtie2-build --threads 40 GCF_000005845.2_ASM584v2_genomic.fna.gz ./eoliindex
+
+#鼠
+bowtie2-build --threads 50 Mus_musculus.GRCm39.dna.primary_assembly.fa.gz ./mm39
+
+```
+
+
+
+####  5.2 Alignment to HG38.
+
+```
+ref="./0.ref/hg38index/hg38"   
+
+#multi-sample  loop 
+mkdir ./6.alignment 
+
+nohup ls ./4.cleanfastq |grep R1.fq.gz |cut -d _ -f 1,1 \
+| while read id; do
+bowtie2 --end-to-end --very-sensitive --no-mixed  --phred33 \
+-I 10 -X 700 -p 80 -x $ref \
+-1 ./4.cleanfastq/${id}_R1.fq.gz -2 ./4.cleanfastq/${id}_R2.fq.gz \
+-S ./6.alignment/${id}.sam 2> ./6.alignment/${id}_bowtie2.txt
+done &
+
+for id in  sxh-2  sxh-3  sxh-4  sxh-5  sxh-6 
+do
+bowtie2 --end-to-end --very-sensitive --no-mixed  --phred33 \
+-I 10 -X 700 -p 80 -x $ref \
+-1 ./4.cleanfastq/${id}_R1.fq.gz -2 ./4.cleanfastq/${id}_R2.fq.gz \
+-S ./6.alignment/${id}.sam 2> ./6.alignment/${id}_bowtie2.txt
+done &
+
+```
+
+
+
+### 6. remove dul.(选做)
+
+```
+# In practice, we have found that the apparent duplication rate is low for high quality ##CUT&Tag datasets, and even the apparent ‘duplicate’ fragments are likely to be true ##fragments. Thus, we do not recommend removing the duplicates.
+
+## sort
+nohup  mkdir ./7.removeDuplicate |ls ./6.alignment |grep sam |cut -d . -f 1,1 \
+| while read id; do
+	picard SortSam I=./6.alignment/${id}.sam \
+    O=./7.removeDuplicate/${id}.sorted.sam \
+    SORT_ORDER=coordinate
+done &
+
+for id in G2 G3 G4 G5 G6
+ do
+	picard SortSam I=./6.alignment/${id}.sam \
+    O=./7.removeDuplicate/${id}.sorted.sam \
+    SORT_ORDER=coordinate
+done &
+
+
+## mark and remove reads 
+ls ./6.alignment |grep sam |cut -d . -f 1,1 \
+| while read id; do
+picard MarkDuplicates \
+I=./7.removeDuplicate/${id}.sorted.sam \
+O=./7.removeDuplicate/${id}.sorted.rmDup.sam \
+REMOVE_DUPLICATES=true \
+METRICS_FILE=./7.removeDuplicate/${id}_picard.rmDup.txt
+done
+
+```
+
+
+
+### 7. Assess fragment distribution
+
+##### 
+
+```
+# -F unmap 
+mkdir ./8.fragmentLen
+ls ./4.cleanfastq |grep R1 |cut -d _ -f 1,1 \
+| while read id; do
+do
+  samtools view -F 0x04 ./7.removeDuplicate/${id}.sorted.rmDup.sam | \
+    awk -F'\t' 'function abs(x){return ((x < 0.0) ? -x : x)} {print abs($9)}' | \
+    sort | uniq -c | awk -v OFS="\t" '{print $2, $1/2}' \
+    > ./8.fragmentLen/${id}_fragmentLen.txt &
+done
+
+
+for id in B1 B2 B3 B4 B5 B6 G1 G2 G3 G4 G5 G6
+do
+samtools view -F 0x04 ./7.removeDuplicate/${id}.sorted.rmDup.sam | \
+    awk -F'\t' 'function abs(x){return ((x < 0.0) ? -x : x)} {print abs($9)}' | \
+    sort | uniq -c | awk -v OFS="\t" '{print $2, $1/2}' \
+    > ./8.fragmentLen/${id}_fragmentLen.txt &
+done
+```
+
+### 8.filter and file format transform
+
+```
+# Get alignmented paired-end bed file
+
+ls ./7.removeDuplicate |grep sorted.rmDup.sam |cut -d . -f 1,1 \
+| while read id; do
+## filter and paired-end reads 
+samtools view -@ 80 -bS -F 0x04 ./7.removeDuplicate/${id}.sorted.rmDup.sam \
+>./7.removeDuplicate/${id}.mapped.bam
+## Convert into bed file format
+bedtools bamtobed -i ./7.removeDuplicate/${id}.mapped.bam -bedpe \
+>./7.removeDuplicate/${id}.bed
+done
+
+
+# awk start-end <1000 (Keep the read pairs that are on the same chromosome and fragment length less than 1000bp.)
+
+ls ./4.cleanfastq |grep bed |cut -d . -f 1,1 \
+| while read id; do
+awk '$1==$4 && $6-$2 < 1000 {print $0}' ./7.removeDuplicate/${id}.bed \
+>./7.removeDuplicate/${id}.clean.bed
+done
+
+## Only extract the fragment related columns
+ls ./4.cleanfastq |grep clean.bed |cut -d . -f 1,1 \
+| while read id; do
+do 
+cut -f 1,2,6 ./7.removeDuplicate/${id}.clean.bed | sort -k1,1 -k2,2n -k3,3n \ >./8.fragmentLen/${id}.fragments.bed
+done
+
+#4.3 Assess replicate reproducibility (continue section 3.5)
+
+##== linux command ==##
+## We use the mid point of each fragment to infer which 500bp bins does this fragment 
+## belong to.
+
+binLen=500
+ls ./4.cleanfastq |grep R1 |cut -d _ -f 1,1 \
+| while read id; do
+awk -v w=$binLen '{print $1, int(($2 + $3)/(2*w))*w + w/2}' ./8.fragmentLen/${id}.fragments.bed| sort -k1,1V -k2,2n | uniq -c | awk -v OFS="\t" '{print $2, $3, $1}' |  sort -k1,1V -k2,2n  >./8.fragmentLen//${id}.fragmentsCount.bin$binLen.bed
+done
+```
+
+
+
+
+
+### 9.peak calling
+
+```
+# ------------->
+# peak calling
+# ------------->
+# SEACR (you can try it )
+
+# In this paper ,MACS2 was used
+## annuo
+for id in sxh-1.mapped.bam sxh-2.mapped.bam sxh-3.mapped.bam sxh-4.mapped.bam sxh-5.mapped.bam sxh-6.mapped.bam
+do
+macs2 callpeak -t ${id} \
+      -g hs -f BAMPE \
+      -n macs2_peak_p0.05.${id} \
+      --outdir ../9.p0.05macs2 -p 0.05 --keep-dup all \
+      2>../9.p0.05macs2/macs2Peak_summary.${id}.txt
+done
+
+
+# 0.1
+for id in sxh-1.mapped.bam sxh-2.mapped.bam sxh-3.mapped.bam sxh-4.mapped.bam sxh-5.mapped.bam sxh-6.mapped.bam
+do
+macs2 callpeak -t ${id} \
+      -g hs -f BAMPE \
+      -n macs2_peak_p0.1.${id} \
+      --outdir ../9.p0.1macs2 -p 0.1 --keep-dup all \
+      2>../9.p0.1macs2/macs2Peak_summary.${id}.txt
+done
+
+```
+
+
+
+
+
+
+
+
+
+## IGV  Visualization 
+
+
+```
+##== linux command ==##
+
+ls ./7.removeDuplicate |grep sorted.rmDup.sam |cut -d . -f 1,1 \
+| while read id; do
+samtools view -@ 80 -bS -F 0x04 ./7.removeDuplicate/${id}.sorted.rmDup.sam \
+>./7.removeDuplicate/${id}.mapped.bam
+
+## Convert into bed file format
+# bed 文件
+bedtools bamtobed -i ./7.removeDuplicate/${id}.mapped.bam -bedpe \
+>./7.removeDuplicate/${id}.bed
+done
+
+# bigwig 文件
+mkdir  ./11.bigwig                                                                       ls ./7.removeDuplicate |grep sorted.rmDup.sam |cut -d . -f 1,1 \
+| while read id; do                                                                 
+samtools sort -@80 -o ./7.removeDuplicate/${id}.sorted.bam ./7.removeDuplicate/${id}.mapped.bam
+done
+
+ls ./7.removeDuplicate |grep sorted.rmDup.sam |cut -d . -f 1,1 \
+| while read id; do                                             
+samtools index ./7.removeDuplicate/${id}.sorted.bam                                     
+done
+
+ls ./7.removeDuplicate |grep sorted.rmDup.sam |cut -d . -f 1,1 \
+| while read id; do 
+bamCoverage -b ./7.removeDuplicate/${id}.sorted.bam -o ./11.bigwig/${id}_raw.bw      
+done 
+for id in G6
+do
+bamCoverage -b ./7.removeDuplicate/${id}.sorted.bam -o ./11.bigwig/${id}_raw.bw      
+done
+
+
+# bamCoverage --bam a.bam -o a.SeqDepthNorm.bw \
+    --binSize 10
+    --normalizeUsing RPGC
+    --effectiveGenomeSize 2150570000
+    --ignoreForNormalization chrX
+    --extendReads
+```
+
+### 7.2.1 Heatmap over transcription units
+
+Hide
+
+```
+##== linux command ==##
+cores=8
+computeMatrix scale-regions -S $projPath/alignment/bigwig/D1.bw \
+                               $projPath/alignment/bigwig/D2.bw \
+                               $projPath/alignment/bigwig/M1.bw \
+                               $projPath/alignment/bigwig/M2.bw \
+                              -R $projPath/data/hg38_gene/hg38_gene.tsv \
+                              --beforeRegionStartLength 3000 \
+                              --regionBodyLength 5000 \
+                              --afterRegionStartLength 3000 \
+                              --skipZeros -o $projPath/data/hg38_gene/matrix_gene.mat.gz -p $cores
+
+plotHeatmap -m $projPath/data/hg38_gene/matrix_gene.mat.gz -out $projPath/data/hg38_gene/Histone_gene.png --sortUsing sum
+```
