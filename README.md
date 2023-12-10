@@ -8,6 +8,7 @@
 
 1. Analyse bulk RNAseq
 2. Analyse Cuttag
+3. Analyse scRNAseq
 
 
 Please contact the author of the paper, Ye Meng (mengyeanhui@gmail.com), with any comments, concerns or requests. We'll be happy to help you adapt our pipeline for your analyses!
