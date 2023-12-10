@@ -2,7 +2,9 @@
 
 #### By Hyacinth Meng 202302 ---202304
 
-## This repository contains the bash and R code used to analyze and generate the images for the paper. Files contained are:
+
+
+### This repository contains the bash and R code used to analyze and generate the images for the paper. Files contained are:
 
 1. Analyse bulk RNAseq
 2. Analyse Cuttag
